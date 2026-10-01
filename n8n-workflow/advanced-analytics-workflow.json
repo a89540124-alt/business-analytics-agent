@@ -1,0 +1,202 @@
+{
+  "name": "Advanced Business Analytics Agent",
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base:webhook",
+      "typeVersion": 1,
+      "position": [50, 50]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "collection": "daily_analytics",
+        "fields": {
+          "date": "={{new Date().toISOString()}}",
+          "revenue": "={{$json.body.revenue}}",
+          "orders": "={{$json.body.orders}}",
+          "regions": "={{$json.body.regions}}",
+          "status": "pending"
+        }
+      },
+      "name": "Store Raw Data",
+      "type": "n8n-nodes-base:mongoDb",
+      "typeVersion": 1,
+      "position": [250, 50]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o-mini",
+        "messages": {
+          "messageUiType": "multiMessage",
+          "messageValues": [
+            {
+              "content": "As a business intelligence expert, analyze this daily analytics data:\nRevenue: {{$json.body.revenue}}\nOrders: {{$json.body.orders}}\nRegions: {{$json.body.regions}}\n\nProvide: 1) Executive Summary, 2) Key Metrics Analysis, 3) Growth Trends, 4) Risk Assessment, 5) Action Items for management"
+            }
+          ]
+        }
+      },
+      "name": "Generate Executive Summary",
+      "type": "n8n-nodes-base:openAi",
+      "typeVersion": 1,
+      "position": [450, 50]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o-mini",
+        "messages": {
+          "messageUiType": "multiMessage",
+          "messageValues": [
+            {
+              "content": "Based on this business data: {{$json.body}}, identify:", "content": "1) Top performing regions 2) Underperforming areas 3) Customer acquisition cost optimization 4) Inventory recommendations 5) Marketing focus areas"
+            }
+          ]
+        }
+      },
+      "name": "Generate Detailed Recommendations",
+      "type": "n8n-nodes-base:openAi",
+      "typeVersion": 1,
+      "position": [650, 50]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "collection": "ai_reports",
+        "fields": {
+          "timestamp": "={{new Date().toISOString()}}",
+          "summary": "={{$node['Generate Executive Summary'].json.choices[0].message.content}}",
+          "recommendations": "={{$node['Generate Detailed Recommendations'].json.choices[0].message.content}}",
+          "report_status": "completed"
+        }
+      },
+      "name": "Save Full Report",
+      "type": "n8n-nodes-base:mongoDb",
+      "typeVersion": 1,
+      "position": [850, 50]
+    },
+    {
+      "parameters": {
+        "fileName": "Business_Report_{{$now.format('YYYY-MM-DD')}}.pdf",
+        "content": "Business Analytics Report\n\nDate: {{$now.format('YYYY-MM-DD HH:mm:ss')}}\n\nExecutive Summary:\n{{$node['Generate Executive Summary'].json.choices[0].message.content}}\n\nDetailed Recommendations:\n{{$node['Generate Detailed Recommendations'].json.choices[0].message.content}}"
+      },
+      "name": "Generate PDF Report",
+      "type": "n8n-nodes-base:pdf",
+      "typeVersion": 1,
+      "position": [1050, 50]
+    },
+    {
+      "parameters": {
+        "emailTo": "{{$json.body.admin_email}}",
+        "subject": "Daily Business Analytics Report - {{$now.format('YYYY-MM-DD')}}",
+        "htmlMessage": "<h1>Business Analytics Report</h1><p>{{$node['Generate Executive Summary'].json.choices[0].message.content}}</p><h2>Recommendations:</h2><p>{{$node['Generate Detailed Recommendations'].json.choices[0].message.content}}</p>",
+        "attachments": "{{$node['Generate PDF Report'].data}}"
+      },
+      "name": "Send Email with PDF",
+      "type": "n8n-nodes-base:sendGrid",
+      "typeVersion": 1,
+      "position": [1250, 50]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3000/api/dashboard/update",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "report_data",
+              "value": "={{$node['Save Full Report'].json}}"
+            },
+            {
+              "name": "chart_data",
+              "value": "={{$json.body}}"
+            }
+          ]
+        }
+      },
+      "name": "Push to Dashboard",
+      "type": "n8n-nodes-base:httpRequest",
+      "typeVersion": 4,
+      "position": [1450, 50]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Store Raw Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Raw Data": {
+      "main": [
+        [
+          {
+            "node": "Generate Executive Summary",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Generate Detailed Recommendations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Executive Summary": {
+      "main": [
+        [
+          {
+            "node": "Save Full Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Detailed Recommendations": {
+      "main": [
+        [
+          {
+            "node": "Save Full Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Full Report": {
+      "main": [
+        [
+          {
+            "node": "Generate PDF Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate PDF Report": {
+      "main": [
+        [
+          {
+            "node": "Send Email with PDF",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Push to Dashboard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

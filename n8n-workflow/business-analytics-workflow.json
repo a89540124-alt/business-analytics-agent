@@ -1,0 +1,151 @@
+{
+  "name": "Business Analytics Agent Workflow",
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "Start",
+      "type": "n8n-nodes-base:start",
+      "typeVersion": 1,
+      "position": [50, 50]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "collection": "business_data",
+        "fields": {
+          "revenue": "={{$json.revenue}}",
+          "orders": "={{$json.orders}}",
+          "profit_margin": "={{$json.profit_margin}}",
+          "region": "={{$json.region}}",
+          "customer_retention": "={{$json.customer_retention}}",
+          "timestamp": "={{new Date().toISOString()}}"
+        }
+      },
+      "name": "Save Business Data to Database",
+      "type": "n8n-nodes-base:mongoDb",
+      "typeVersion": 1,
+      "position": [250, 50]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o-mini",
+        "messages": {
+          "messageUiType": "multiMessage",
+          "messageValues": [
+            {
+              "content": "You are a business analyst. Analyze this business data and provide: 1) Key insights, 2) Trends, 3) Recommendations. Data: Revenue: {{$json.revenue}}, Orders: {{$json.orders}}, Region: {{$json.region}}, Retention: {{$json.customer_retention}}%"
+            }
+          ]
+        }
+      },
+      "name": "AI Business Analysis",
+      "type": "n8n-nodes-base:openAi",
+      "typeVersion": 1,
+      "position": [450, 50]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "collection": "ai_insights",
+        "fields": {
+          "region": "={{$json.region}}",
+          "analysis": "={{$node['AI Business Analysis'].json.choices[0].message.content}}",
+          "generated_at": "={{new Date().toISOString()}}"
+        }
+      },
+      "name": "Save AI Insights",
+      "type": "n8n-nodes-base:mongoDb",
+      "typeVersion": 1,
+      "position": [650, 50]
+    },
+    {
+      "parameters": {
+        "emailTo": "={{$json.email}}",
+        "subject": "Business Analytics Report - {{$json.region}}",
+        "htmlMessage": "<h2>Business Analytics Report</h2><p><strong>Region:</strong> {{$json.region}}</p><p><strong>Revenue:</strong> {{$json.revenue}}</p><p><strong>Orders:</strong> {{$json.orders}}</p><p><strong>Profit Margin:</strong> {{$json.profit_margin}}%</p><p><strong>Customer Retention:</strong> {{$json.customer_retention}}%</p><h3>AI Insights & Recommendations:</h3><p>{{$node['AI Business Analysis'].json.choices[0].message.content}}</p>"
+      },
+      "name": "Send Email Report",
+      "type": "n8n-nodes-base:sendGrid",
+      "typeVersion": 1,
+      "position": [850, 50]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3000/api/analytics",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "region",
+              "value": "={{$json.region}}"
+            },
+            {
+              "name": "revenue",
+              "value": "={{$json.revenue}}"
+            },
+            {
+              "name": "insights",
+              "value": "={{$node['AI Business Analysis'].json.choices[0].message.content}}"
+            }
+          ]
+        }
+      },
+      "name": "Send to Web Dashboard",
+      "type": "n8n-nodes-base:httpRequest",
+      "typeVersion": 4,
+      "position": [1050, 50]
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Save Business Data to Database",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Business Data to Database": {
+      "main": [
+        [
+          {
+            "node": "AI Business Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Business Analysis": {
+      "main": [
+        [
+          {
+            "node": "Save AI Insights",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save AI Insights": {
+      "main": [
+        [
+          {
+            "node": "Send Email Report",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send to Web Dashboard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
